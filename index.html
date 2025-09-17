@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Simple Attendance (HTML/CSS/JS)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#f7f8fa; --card:#fff; --accent:#2563eb; --muted:#6b7280; --ok:#16a34a; --no:#dc2626; }
+    *{box-sizing:border-box} body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);margin:0;color:#111}
+    header{padding:16px 20px;background:var(--card);border-bottom:1px solid #e5e7eb}
+    h1{font-size:18px;margin:0}
+    .wrap{max-width:980px;margin:24px auto;padding:0 16px;display:grid;gap:16px}
+    .card{background:var(--card);border:1px solid #e5e7eb;border-radius:10px;padding:16px}
+    .tabs{display:flex;gap:8px;margin-bottom:12px}
+    .tabs button{border:1px solid #e5e7eb;background:#fff;padding:8px 12px;border-radius:8px;cursor:pointer}
+    .tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    input,select{padding:8px;border:1px solid #e5e7eb;border-radius:8px}
+    .btn{padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer}
+    .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .btn.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
+    .btn.no{background:var(--no);color:#fff;border-color:var(--no)}
+    .list{margin-top:12px;border-top:1px solid #e5e7eb}
+    .student{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid #f0f1f3}
+    .pill{font-size:12px;color:#fff;border-radius:999px;padding:2px 8px;display:inline-block}
+    .pill.ok{background:var(--ok)} .pill.no{background:var(--no)}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #e5e7eb;padding:8px;text-align:left;font-size:14px}
+    th{background:#f9fafb}
+    .muted{color:var(--muted);font-size:13px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header><h1>Simple Attendance (Professor marks • Student views)</h1></header>
+
+  <div class="wrap">
+    <div class="tabs">
+      <button id="tab-prof" class="active">Professor</button>
+      <button id="tab-student">Student</button>
+    </div>
+
+    <!-- Professor Panel -->
+    <div id="prof-panel" class="card">
+      <h3>Professor panel</h3>
+      <div class="row" style="margin-top:8px">
+        <input id="date" type="date" />
+        <select id="section">
+          <option value="CSE-A">CSE-A</option>
+          <option value="CSE-B">CSE-B</option>
+        </select>
+        <button id="add-student" class="btn">Add student</button>
+        <button id="save" class="btn primary">Save attendance</button>
+      </div>
+      <div class="muted" style="margin-top:6px">Tip: Add students once; then just set date and mark P/A daily. Data is stored in browser localStorage.</div>
+
+      <div class="list" id="student-list"></div>
+    </div>
+
+    <!-- Student Panel -->
+    <div id="student-panel" class="card" style="display:none">
+      <h3>Student panel</h3>
+      <div class="row" style="margin-top:8px">
+        <input id="roll-input" type="text" placeholder="Enter roll (e.g., 22CS001)" />
+        <select id="section-view">
+          <option value="CSE-A">CSE-A</option>
+          <option value="CSE-B">CSE-B</option>
+        </select>
+        <button id="view" class="btn primary">View my attendance</button>
+        <button id="clear" class="btn">Clear all data (demo)</button>
+      </div>
+
+      <div id="stats" style="margin-top:12px" class="muted">No data loaded.</div>
+      <table id="table" style="display:none">
+        <thead>
+          <tr><th>Date</th><th>Roll</th><th>Name</th><th>Status</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Storage keys
+    const STUDENTS_KEY = 'students_v1';
+    const ATTEND_KEY = 'attendance_v1';
+
+    // Elements
+    const tabProf = document.getElementById('tab-prof');
+    const tabStud = document.getElementById('tab-student');
+    const profPanel = document.getElementById('prof-panel');
+    const studPanel = document.getElementById('student-panel');
+
+    const dateEl = document.getElementById('date');
+    const sectionEl = document.getElementById('section');
+    const addBtn = document.getElementById('add-student');
+    const saveBtn = document.getElementById('save');
+    const listEl = document.getElementById('student-list');
+
+    const rollInput = document.getElementById('roll-input');
+    const sectionView = document.getElementById('section-view');
+    const viewBtn = document.getElementById('view');
+    const clearBtn = document.getElementById('clear');
+    const statsEl = document.getElementById('stats');
+    const tableEl = document.getElementById('table');
+    const tbodyEl = tableEl.querySelector('tbody');
+
+    // Helpers for localStorage
+    const load = (key) => JSON.parse(localStorage.getItem(key) || '[]');
+    const save = (key, val) => localStorage.setItem(key, JSON.stringify(val));
+
+    // Default seed students for demo
+    if (load(STUDENTS_KEY).length === 0) {
+      save(STUDENTS_KEY, [
+        { roll: '22CS001', name: 'Asha', section: 'CSE-A' },
+        { roll: '22CS002', name: 'Rahul', section: 'CSE-A' },
+        { roll: '22CS101', name: 'Meera', section: 'CSE-B' }
+      ]);
+    }
+
+    // Tabs
+    tabProf.onclick = () => { tabProf.classList.add('active'); tabStud.classList.remove('active'); profPanel.style.display='block'; studPanel.style.display='none'; renderProfessorList(); };
+    tabStud.onclick = () => { tabStud.classList.add('active'); tabProf.classList.remove('active'); profPanel.style.display='none'; studPanel.style.display='block'; };
+
+    // Professor: render student list for section with toggle buttons
+    function renderProfessorList() {
+      const students = load(STUDENTS_KEY).filter(s => s.section === sectionEl.value);
+      const today = dateEl.value || new Date().toISOString().slice(0,10);
+      const attend = load(ATTEND_KEY).filter(r => r.date === today && r.section === sectionEl.value);
+      listEl.innerHTML = '';
+      if (students.length === 0) {
+        listEl.innerHTML = '<div class="muted" style="padding:12px 0">No students in this section yet.</div>';
+        return;
+      }
+      students.forEach(s => {
+        const rec = attend.find(r => r.roll === s.roll);
+        const status = rec?.status || 'A'; // default Absent
+        const row = document.createElement('div');
+        row.className = 'student';
+        row.innerHTML = `
+          <div><strong>${s.roll}</strong> — ${s.name} <span class="muted">(${s.section})</span></div>
+          <div><span class="pill ${status==='P'?'ok':'no'}">${status==='P'?'Present':'Absent'}</span></div>
+          <div class="row">
+            <button class="btn ok">Mark P</button>
+            <button class="btn no">Mark A</button>
+          </div>
+        `;
+        const [ , , btnWrap ] = row.children;
+        const btnP = btnWrap.children[0];
+        const btnA = btnWrap.children[1];
+        const pill = row.children[1].querySelector('.pill');
+
+        btnP.onclick = () => { setStatus(s.roll, s.section, today, 'P'); pill.textContent='Present'; pill.className='pill ok'; };
+        btnA.onclick = () => { setStatus(s.roll, s.section, today, 'A'); pill.textContent='Absent'; pill.className='pill no'; };
+        listEl.appendChild(row);
+      });
+    }
+
+    function setStatus(roll, section, date, status) {
+      const data = load(ATTEND_KEY);
+      const idx = data.findIndex(r => r.roll === roll && r.section === section && r.date === date);
+      if (idx >= 0) data[idx].status = status;
+      else data.push({ roll, section, date, status });
+      save(ATTEND_KEY, data);
+    }
+
+    // Add student (prompt-based for simplicity)
+    addBtn.onclick = () => {
+      const roll = prompt('Enter roll number (e.g., 22CS003):');
+      if (!roll) return;
+      const name = prompt('Enter student name:') || 'Student';
+      const section = sectionEl.value;
+      const students = load(STUDENTS_KEY);
+      if (students.some(s => s.roll === roll)) { alert('Roll already exists'); return; }
+      students.push({ roll, name, section });
+      save(STUDENTS_KEY, students);
+      renderProfessorList();
+    };
+
+    // Save button (no-op, as we autosave on mark; keep for UX)
+    saveBtn.onclick = () => {
+      alert('Attendance saved for ' + (dateEl.value || new Date().toISOString().slice(0,10)) + ' (' + sectionEl.value + ')');
+    };
+
+    // React to section/date changes
+    sectionEl.onchange = renderProfessorList;
+    dateEl.onchange = renderProfessorList;
+
+    // Student view
+    viewBtn.onclick = () => {
+      const roll = rollInput.value.trim();
+      const section = sectionView.value;
+      if (!roll) { alert('Enter roll'); return; }
+      const records = load(ATTEND_KEY).filter(r => r.roll === roll && r.section === section)
+                                      .sort((a,b) => a.date.localeCompare(b.date));
+      const totals = records.reduce((acc,r) => { acc.total++; if (r.status==='P') acc.present++; else acc.absent++; return acc; }, {total:0,present:0,absent:0});
+      if (records.length === 0) {
+        statsEl.textContent = 'No attendance records found.';
+        tableEl.style.display='none';
+        return;
+      }
+      const pct = totals.total ? Math.round((totals.present / totals.total)*100) : 0;
+      statsEl.textContent = `Total: ${totals.total} • Present: ${totals.present} • Absent: ${totals.absent} • Attendance: ${pct}%`;
+      tbodyEl.innerHTML = '';
+      records.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.date}</td><td>${r.roll}</td><td>${getName(r.roll)}</td><td>${r.status==='P'?'Present':'Absent'}</td>`;
+        tbodyEl.appendChild(tr);
+      });
+      tableEl.style.display='table';
+    };
+
+    function getName(roll){
+      const s = load(STUDENTS_KEY).find(x => x.roll === roll);
+      return s ? s.name : '-';
+    }
+
+    // Demo: clear all data
+    clearBtn.onclick = () => {
+      if (!confirm('Clear all attendance and students?')) return;
+      localStorage.removeItem(STUDENTS_KEY);
+      localStorage.removeItem(ATTEND_KEY);
+      location.reload();
+    };
+
+    // Init today and render
+    dateEl.value = new Date().toISOString().slice(0,10);
+    renderProfessorList();
+  </script>
+</body>
+</html>
